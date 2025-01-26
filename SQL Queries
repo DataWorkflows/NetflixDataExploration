@@ -1,0 +1,45 @@
+//CTE separates rows with multiple genres into multiple rows, each with a single genre
+WITH genre_cte AS (
+	SELECT  
+	    	replace(unnest(string_to_array(trim(both '[]' from genres), ', ')), '''', '') AS genre,
+	    	count(*) AS genre_count,
+	    	production_countries
+	FROM 
+	    	"Netflix".titles
+	GROUP BY 1, 3
+	ORDER BY 1
+)
+//Main query gets a count of movies for each genre
+SELECT 	genre,
+		sum(genre_count) AS sum_genres,
+		sum(CASE WHEN production_countries LIKE '%US%' THEN genre_count ELSE 0 end) AS sum_us
+FROM genre_cte
+GROUP BY 1;
+
+//CTE ranks movies by IMDB Score.
+//Filters of movies are in CTE.
+WITH ranked_titles AS (
+	SELECT 	id,
+			    title,
+			    imdb_score,
+			    release_year ,
+			    rank() OVER (ORDER BY imdb_score desc) AS rank
+	FROM 	  "Netflix".titles
+	WHERE 	imdb_score IS NOT NULL
+			AND genres LIKE '%drama%'
+			AND "type" = 'MOVIE'
+			AND production_countries LIKE '%US%'
+			AND imdb_score >= 7.2
+)
+//Main query ranks actors on the sum of their IMDB scores.   
+//Filters of actors are in main query.
+SELECT 	c.name,
+		    round(sum(rt.imdb_score)::decimal, 1) AS sum_imdb_score,
+		    round(avg(rt.imdb_score)::decimal, 1) AS avg_imdb_score
+FROM 	  credits AS c 
+JOIN 	  ranked_titles AS rt ON rt.id = c.id
+WHERE 	"role" = 'ACTOR'
+		AND rt.release_year >= 1970
+GROUP BY 1
+ORDER BY 2 DESC 
+;
